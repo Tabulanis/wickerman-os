@@ -1,0 +1,22 @@
+# Models (large binary files)
+models/*.gguf
+models/*.bin
+models/*.part
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+versions/
