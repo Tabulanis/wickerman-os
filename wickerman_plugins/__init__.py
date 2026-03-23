@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.1.0 — Plugin package.
+Wickerman OS v5.3.0 — Plugin package.
 Each plugin lives in its own file for isolated editing.
 Imported by wickermaninstall.py.
 """

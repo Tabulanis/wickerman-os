@@ -214,6 +214,7 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min
   <div class="tab-row">
     <div class="tab active" onclick="showTab('local')">Local models</div>
     <div class="tab" onclick="showTab('remote')">Remote providers</div>
+    <div class="tab" onclick="showTab('raglibrary')">RAG Library</div>
   </div>
   <div class="tab-content active" id="tab-local">
     <div id="availList"></div>
@@ -236,11 +237,25 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min
       <div class="sgrid c3">
         <div class="si"><div class="l">Temperature</div><input id="pTemp" value="0.7" type="number" min="0" max="2" step="0.05"></div>
         <div class="si"><div class="l">Max tokens</div><input id="pMaxTok" value="4096" type="number" min="1" step="64"></div>
-        <div class="si"><div class="l">RAG</div><label style="display:flex;align-items:center;gap:6px;padding-top:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="pRag" style="width:auto"> Enabled</label></div>
+        <div class="si"><div class="l">RAG source</div><select id="pRag"><option value="none">None</option><option value="conversation">Conversation memory</option></select></div>
       </div>
       <div style="margin-top:10px"><button class="btn btn-mauve" style="width:100%" onclick="addProvider()">Add provider</button></div>
     </div>
     <div id="remoteList"></div>
+  </div>
+  <div class="tab-content" id="tab-raglibrary">
+    <div class="card" style="margin-bottom:16px">
+      <div class="hdr" style="margin-bottom:12px"><div class="name" style="color:var(--teal)">Build a RAG from a dataset</div></div>
+      <div class="sgrid c2" style="margin-bottom:10px">
+        <div class="si"><div class="l">RAG name</div><input id="rl_name" placeholder="e.g. medical-terms"></div>
+        <div class="si"><div class="l">Pick existing dataset</div><select id="rl_dataset"><option value="">-- or pick a dataset file --</option></select></div>
+      </div>
+      <div class="si" style="margin-bottom:10px"><div class="l">Or upload a new file (.txt .jsonl .csv)</div><input type="file" id="rl_file" accept=".txt,.jsonl,.csv" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px;color:var(--text);width:100%"></div>
+      <button class="btn btn-primary" id="rl_buildBtn" onclick="buildRag()" style="width:100%">Build RAG</button>
+      <div id="rl_status" style="margin-top:10px;font-size:13px;color:var(--subtext)"></div>
+    </div>
+    <div class="sec">Built RAG indexes</div>
+    <div id="rl_list"></div>
   </div>
 </div>
 <script>
@@ -253,19 +268,90 @@ function showTab(t){document.querySelectorAll('.tab').forEach(e=>e.classList.rem
 async function refresh(){try{const[sr,mr,vr]=await Promise.all([fetch(API+'/api/status'),fetch(API+'/api/models'),fetch(API+'/api/vram')]);const status=await sr.json();const models=await mr.json();vramInfo=await vr.json();slotsData=status.slots||{};modelsData=models.models||[];renderGpu();renderVram();renderLoaded();if(!Object.values(expandedCards).some(v=>v))renderAvailable();renderRemote()}catch(e){}}
 function renderGpu(){const d=document.getElementById('gpuDot'),i=document.getElementById('gpuInfo');if(vramInfo.total_mb>0){d.style.background='var(--green)';i.textContent=vramInfo.gpu_name+' \u2014 '+Math.round(vramInfo.total_mb).toLocaleString()+' MB'}else{d.style.background='var(--red)';i.textContent='No GPU detected'}}
 function renderVram(){const bar=document.getElementById('vramBarInner'),text=document.getElementById('vramText'),legend=document.getElementById('vramLegend');if(vramInfo.total_mb<=0){text.textContent='N/A';return}text.textContent=vramInfo.used_mb.toLocaleString()+' / '+vramInfo.total_mb.toLocaleString()+' MB ('+Math.round(vramInfo.used_mb/vramInfo.total_mb*100)+'%)';let bh='',lh='';let ci=0;Object.entries(slotsData).forEach(([a,s])=>{if(s.type==='local'&&s.vram_est_mb){const w=Math.max(1,s.vram_est_mb/vramInfo.total_mb*100);const c=COLORS[ci++%COLORS.length];bh+='<div style="width:'+w+'%;background:'+c+'"></div>';lh+='<span><span class="sw" style="background:'+c+'"></span>'+a+' \u2014 '+s.vram_est_mb.toLocaleString()+' MB</span>'}});bar.innerHTML=bh;legend.innerHTML=lh}
-function renderLoaded(){const grid=document.getElementById('loadedGrid'),label=document.getElementById('loadedLabel');const entries=Object.entries(slotsData);if(!entries.length){grid.innerHTML='<div class="empty">No agents loaded. Configure a model below or add a remote provider.</div>';label.textContent='Loaded agents';return}label.textContent='Loaded agents ('+entries.length+')';grid.innerHTML=entries.map(([a,s],i)=>{const isLocal=s.type==='local';const isGpu=isLocal&&parseInt(s.settings?.gpu_layers||'99')>0;const sc=s.status==='ready'?'ready':s.status==='loading'?'loading':'error';const prompt=s.system_prompt||'';const hasRag=s.rag_enabled;return'<div class="card'+(s.status==='ready'?' active':'')+'"><div class="hdr"><div><div class="name'+(s.status==='ready'?' blue':'')+'">'+a+'</div><div class="fname">'+(isLocal?s.model_file:s.remote_model+' ('+s.provider_type+')')+'</div></div><div class="badges"><span class="badge '+sc+'">'+s.status+'</span>'+(isLocal?(isGpu?'<span class="badge gpu">GPU</span>':'<span class="badge cpu">CPU</span>'):'<span class="badge remote">remote</span>')+(hasRag?'<span class="badge rag">RAG</span>':'')+'</div></div>'+(prompt?'<div class="prompt-preview">\u201c'+esc(prompt)+'\u201d</div>':'')+'<div class="stats">'+(isLocal?'<div class="stat"><div class="l">Context</div><div class="v">'+(s.settings?.ctx_size||'4096')+'</div></div><div class="stat"><div class="l">VRAM</div><div class="v">'+(s.vram_est_mb||0).toLocaleString()+' MB</div></div>':'<div class="stat"><div class="l">Temp</div><div class="v">'+(s.settings?.temperature||'0.7')+'</div></div><div class="stat"><div class="l">Max tokens</div><div class="v">'+(s.settings?.max_tokens||'4096')+'</div></div>')+'</div><div class="actions"><button class="btn btn-danger" onclick="doUnload(\''+a+'\')">Unload</button></div></div>'}).join('')}
+function renderLoaded(){const grid=document.getElementById('loadedGrid'),label=document.getElementById('loadedLabel');const entries=Object.entries(slotsData);if(!entries.length){grid.innerHTML='<div class="empty">No agents loaded. Configure a model below or add a remote provider.</div>';label.textContent='Loaded agents';return}label.textContent='Loaded agents ('+entries.length+')';grid.innerHTML=entries.map(([a,s],i)=>{const isLocal=s.type==='local';const isGpu=isLocal&&parseInt(s.settings?.gpu_layers||'99')>0;const sc=s.status==='ready'?'ready':s.status==='loading'?'loading':'error';const prompt=s.system_prompt||'';const hasRag=s.rag_source&&s.rag_source!=='none';return'<div class="card'+(s.status==='ready'?' active':'')+'"><div class="hdr"><div><div class="name'+(s.status==='ready'?' blue':'')+'">'+a+'</div><div class="fname">'+(isLocal?s.model_file:s.remote_model+' ('+s.provider_type+')')+'</div></div><div class="badges"><span class="badge '+sc+'">'+s.status+'</span>'+(isLocal?(isGpu?'<span class="badge gpu">GPU</span>':'<span class="badge cpu">CPU</span>'):'<span class="badge remote">remote</span>')+(hasRag?'<span class="badge rag">RAG</span>':'')+'</div></div>'+(prompt?'<div class="prompt-preview">\u201c'+esc(prompt)+'\u201d</div>':'')+'<div class="stats">'+(isLocal?'<div class="stat"><div class="l">Context</div><div class="v">'+(s.settings?.ctx_size||'4096')+'</div></div><div class="stat"><div class="l">VRAM</div><div class="v">'+(s.vram_est_mb||0).toLocaleString()+' MB</div></div>':'<div class="stat"><div class="l">Temp</div><div class="v">'+(s.settings?.temperature||'0.7')+'</div></div><div class="stat"><div class="l">Max tokens</div><div class="v">'+(s.settings?.max_tokens||'4096')+'</div></div>')+'</div><div class="actions"><button class="btn btn-danger" onclick="doUnload(\''+a+'\')">Unload</button></div></div>'}).join('')}
 function renderAvailable(){const el=document.getElementById('availList');const avail=modelsData.filter(m=>!m.loaded);if(!avail.length){el.innerHTML=modelsData.length?'<div class="empty">All local models loaded.</div>':'<div class="empty">No .gguf files found in models directory.</div>';return}el.innerHTML=avail.map(m=>{const isOpen=expandedCards[m.name];const id=m.name.replace(/[^a-zA-Z0-9]/g,'_');return'<div class="avail-card"><div class="avail-hdr" onclick="toggleCfg(\''+m.name+'\')"><div class="info"><div class="name">'+m.auto_name+'</div><div class="meta">'+m.name+' \u2014 '+m.size+' (~'+m.estimated_vram_mb.toLocaleString()+' MB)</div></div><button class="btn btn-muted" style="flex:none;width:auto;padding:7px 16px" onclick="event.stopPropagation();toggleCfg(\''+m.name+'\')">'+(isOpen?'Collapse':'Configure')+'</button></div><div class="avail-cfg'+(isOpen?' open':'')+'">'+renderModelSettings(m)+'</div></div>'}).join('')}
-function renderModelSettings(m){const id=m.name.replace(/[^a-zA-Z0-9]/g,'_');const free=vramInfo.free_mb;const fits=m.estimated_vram_mb<free;return'<div class="si" style="margin-bottom:10px"><div class="l">System prompt</div><textarea id="s_prompt_'+id+'" placeholder="Define this agent\'s identity and behavior..."></textarea></div><div class="sgrid"><div class="si"><div class="l">Context size</div><input id="s_ctx_'+id+'" value="4096" type="number" min="128" step="256"></div><div class="si"><div class="l">GPU layers</div><input id="s_ngl_'+id+'" value="99" type="number"></div><div class="si"><div class="l">Threads</div><input id="s_threads_'+id+'" value="" placeholder="auto"></div><div class="si"><div class="l">Alias</div><input id="s_alias_'+id+'" value="'+m.auto_name+'"></div></div><div class="sgrid c2"><div class="si"><div class="l">Offload mode</div><div class="toggle-group" id="s_offload_'+id+'"><div class="opt active" onclick="setOff(\''+id+'\',\'gpu\',this)">GPU</div><div class="opt" onclick="setOff(\''+id+'\',\'cpu\',this)">CPU only</div><div class="opt" onclick="setOff(\''+id+'\',\'split\',this)">Split</div></div></div><div class="si"><div class="l">Est. VRAM</div><div style="font-family:var(--mono);color:var(--yellow);font-size:14px;padding-top:4px">~'+m.estimated_vram_mb.toLocaleString()+' MB</div><div style="font-size:10px;color:var(--subtext);margin-top:2px">'+(fits?free.toLocaleString()+' MB free \u2014 should fit':free.toLocaleString()+' MB free \u2014 may not fit')+'</div></div></div><div class="sgrid c3"><div class="si"><div class="l">Temperature</div><input id="s_temp_'+id+'" value="0.7" type="number" min="0" max="2" step="0.05"></div><div class="si"><div class="l">Top P</div><input id="s_topp_'+id+'" value="0.95" type="number" min="0" max="1" step="0.05"></div><div class="si"><div class="l">RAG memory</div><label style="display:flex;align-items:center;gap:6px;padding-top:6px;font-size:12px;cursor:pointer"><input type="checkbox" id="s_rag_'+id+'" checked style="width:auto"> Enabled</label></div></div><span class="adv-toggle" onclick="toggleAdv(\''+id+'\')">Advanced settings \u25BC</span><div class="adv'+(advancedOpen[id]?' open':'')+'" id="adv_'+id+'"><div class="sgrid"><div class="si"><div class="l">Batch size</div><input id="s_batch_'+id+'" value="" placeholder="2048"></div><div class="si"><div class="l">Flash attention</div><select id="s_fa_'+id+'"><option value="">auto</option><option value="true">on</option></select></div><div class="si"><div class="l">KV cache (K)</div><select id="s_ctk_'+id+'"><option value="">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select></div><div class="si"><div class="l">Seed</div><input id="s_seed_'+id+'" value="" placeholder="-1"></div></div></div><div style="margin-top:12px"><button class="btn btn-primary" onclick="doLoad(\''+m.name+'\',\''+id+'\')">Load agent</button></div>'}
+function renderModelSettings(m){const id=m.name.replace(/[^a-zA-Z0-9]/g,'_');const free=vramInfo.free_mb;const fits=m.estimated_vram_mb<free;return'<div class="si" style="margin-bottom:10px"><div class="l">System prompt</div><textarea id="s_prompt_'+id+'" placeholder="Define this agent\'s identity and behavior..."></textarea></div><div class="sgrid"><div class="si"><div class="l">Context size</div><input id="s_ctx_'+id+'" value="4096" type="number" min="128" step="256"></div><div class="si"><div class="l">GPU layers</div><input id="s_ngl_'+id+'" value="99" type="number"></div><div class="si"><div class="l">Threads</div><input id="s_threads_'+id+'" value="" placeholder="auto"></div><div class="si"><div class="l">Alias</div><input id="s_alias_'+id+'" value="'+m.auto_name+'"></div></div><div class="sgrid c2"><div class="si"><div class="l">Offload mode</div><div class="toggle-group" id="s_offload_'+id+'"><div class="opt active" onclick="setOff(\''+id+'\',\'gpu\',this)">GPU</div><div class="opt" onclick="setOff(\''+id+'\',\'cpu\',this)">CPU only</div><div class="opt" onclick="setOff(\''+id+'\',\'split\',this)">Split</div></div></div><div class="si"><div class="l">Est. VRAM</div><div style="font-family:var(--mono);color:var(--yellow);font-size:14px;padding-top:4px">~'+m.estimated_vram_mb.toLocaleString()+' MB</div><div style="font-size:10px;color:var(--subtext);margin-top:2px">'+(fits?free.toLocaleString()+' MB free \u2014 should fit':free.toLocaleString()+' MB free \u2014 may not fit')+'</div></div></div><div class="sgrid c3"><div class="si"><div class="l">Temperature</div><input id="s_temp_'+id+'" value="0.7" type="number" min="0" max="2" step="0.05"></div><div class="si"><div class="l">Top P</div><input id="s_topp_'+id+'" value="0.95" type="number" min="0" max="1" step="0.05"></div><div class="si"><div class="l">RAG source</div><select id=\"s_rag_\'+id+\'\"><option value=\"conversation\">Conversation memory</option><option value=\"none\">None</option></select></div></div><span class="adv-toggle" onclick="toggleAdv(\''+id+'\')">Advanced settings \u25BC</span><div class="adv'+(advancedOpen[id]?' open':'')+'" id="adv_'+id+'"><div class="sgrid"><div class="si"><div class="l">Batch size</div><input id="s_batch_'+id+'" value="" placeholder="2048"></div><div class="si"><div class="l">Flash attention</div><select id="s_fa_'+id+'"><option value="">auto</option><option value="true">on</option></select></div><div class="si"><div class="l">KV cache (K)</div><select id="s_ctk_'+id+'"><option value="">f16</option><option value="q8_0">q8_0</option><option value="q4_0">q4_0</option></select></div><div class="si"><div class="l">Seed</div><input id="s_seed_'+id+'" value="" placeholder="-1"></div></div></div><div style="margin-top:12px"><button class="btn btn-primary" onclick="doLoad(\''+m.name+'\',\''+id+'\')">Load agent</button></div>'}
 function renderRemote(){const el=document.getElementById('remoteList');const remote=Object.entries(slotsData).filter(([a,s])=>s.type!=='local');if(!remote.length){el.innerHTML='<div class="empty" style="padding:20px">No remote providers configured.</div>';return}el.innerHTML='<div class="sec">Active remote agents</div>'+remote.map(([a,s])=>'<div class="card" style="margin-bottom:12px"><div class="hdr"><div><div class="name" style="color:var(--mauve)">'+a+'</div><div class="fname">'+s.remote_model+' ('+s.provider_type+')</div></div><div class="badges"><span class="badge ready">ready</span><span class="badge remote">remote</span>'+(s.rag_enabled?'<span class="badge rag">RAG</span>':'')+'</div></div>'+(s.system_prompt?'<div class="prompt-preview">\u201c'+esc(s.system_prompt)+'\u201d</div>':'')+'<div class="actions"><button class="btn btn-danger" onclick="doUnload(\''+a+'\')">Remove</button></div></div>').join('')}
 function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML}
 function toggleCfg(n){expandedCards[n]=!expandedCards[n];renderAvailable()}
 function toggleAdv(id){advancedOpen[id]=!advancedOpen[id];const el=document.getElementById('adv_'+id);if(el)el.classList.toggle('open')}
 function setOff(id,mode,el){const g=document.getElementById('s_offload_'+id);g.querySelectorAll('.opt').forEach(o=>o.classList.remove('active'));el.classList.add('active');const ngl=document.getElementById('s_ngl_'+id);if(mode==='cpu')ngl.value='0';else if(mode==='gpu')ngl.value='99';else ngl.value='20'}
 function getVal(id){const e=document.getElementById(id);return e?e.value.trim():''}
-async function doLoad(filename,id){const alias=getVal('s_alias_'+id)||null;const settings={};if(getVal('s_ctx_'+id))settings.ctx_size=getVal('s_ctx_'+id);if(getVal('s_ngl_'+id))settings.gpu_layers=getVal('s_ngl_'+id);if(getVal('s_threads_'+id))settings.threads=getVal('s_threads_'+id);if(getVal('s_temp_'+id))settings.temperature=getVal('s_temp_'+id);if(getVal('s_topp_'+id))settings.top_p=getVal('s_topp_'+id);if(getVal('s_batch_'+id))settings.batch_size=getVal('s_batch_'+id);if(getVal('s_fa_'+id))settings.flash_attn=getVal('s_fa_'+id);if(getVal('s_ctk_'+id))settings.cache_type_k=getVal('s_ctk_'+id);if(getVal('s_seed_'+id))settings.seed=getVal('s_seed_'+id);const sysPrompt=getVal('s_prompt_'+id);const ragEnabled=document.getElementById('s_rag_'+id)?.checked??true;try{const r=await fetch(API+'/api/slots/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:filename,alias:alias,settings:settings,system_prompt:sysPrompt,rag_enabled:ragEnabled,rag_top_k:3})});const d=await r.json();if(!d.ok)alert('Load failed: '+(d.detail||d.error))}catch(e){alert('Load failed: '+e)}expandedCards={};advancedOpen={};setTimeout(refresh,2000);setTimeout(refresh,6000)}
+async function doLoad(filename,id){const alias=getVal('s_alias_'+id)||null;const settings={};if(getVal('s_ctx_'+id))settings.ctx_size=getVal('s_ctx_'+id);if(getVal('s_ngl_'+id))settings.gpu_layers=getVal('s_ngl_'+id);if(getVal('s_threads_'+id))settings.threads=getVal('s_threads_'+id);if(getVal('s_temp_'+id))settings.temperature=getVal('s_temp_'+id);if(getVal('s_topp_'+id))settings.top_p=getVal('s_topp_'+id);if(getVal('s_batch_'+id))settings.batch_size=getVal('s_batch_'+id);if(getVal('s_fa_'+id))settings.flash_attn=getVal('s_fa_'+id);if(getVal('s_ctk_'+id))settings.cache_type_k=getVal('s_ctk_'+id);if(getVal('s_seed_'+id))settings.seed=getVal('s_seed_'+id);const sysPrompt=getVal('s_prompt_'+id);const ragSource=getVal('s_rag_'+id)||'conversation';const ragEnabled=ragSource!=='none';try{const r=await fetch(API+'/api/slots/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:filename,alias:alias,settings:settings,system_prompt:sysPrompt,rag_enabled:ragEnabled,rag_source:ragSource,rag_top_k:3})});const d=await r.json();if(!d.ok)alert('Load failed: '+(d.detail||d.error))}catch(e){alert('Load failed: '+e)}expandedCards={};advancedOpen={};setTimeout(refresh,2000);setTimeout(refresh,6000)}
 async function doUnload(alias){try{await fetch(API+'/api/slots/unload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alias:alias})})}catch(e){alert('Unload failed: '+e)}setTimeout(refresh,500)}
-async function addProvider(){const alias=getVal('pAlias');const type=getVal('pType');const base=getVal('pBase');const model=getVal('pModel');const key=getVal('pKey');const sysPrompt=getVal('pSysPrompt');const temp=getVal('pTemp');const maxTok=getVal('pMaxTok');const ragEnabled=document.getElementById('pRag')?.checked??false;if(!alias||!base||!model){alert('Alias, API base, and model name are required');return}try{const r=await fetch(API+'/api/providers/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alias:alias,type:type,api_base:base,api_key:key,remote_model:model,system_prompt:sysPrompt,settings:{temperature:parseFloat(temp)||0.7,max_tokens:parseInt(maxTok)||4096},rag_enabled:ragEnabled,rag_top_k:3})});const d=await r.json();if(!d.ok)alert('Failed: '+(d.detail||d.error));else{document.getElementById('pAlias').value='';document.getElementById('pKey').value='';document.getElementById('pModel').value='';document.getElementById('pSysPrompt').value=''}}catch(e){alert('Failed: '+e)}setTimeout(refresh,500)}
+async function addProvider(){const alias=getVal('pAlias');const type=getVal('pType');const base=getVal('pBase');const model=getVal('pModel');const key=getVal('pKey');const sysPrompt=getVal('pSysPrompt');const temp=getVal('pTemp');const maxTok=getVal('pMaxTok');const pRagSource=getVal('pRag')||'none';const ragEnabled=pRagSource!=='none';if(!alias||!base||!model){alert('Alias, API base, and model name are required');return}try{const r=await fetch(API+'/api/providers/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({alias:alias,type:type,api_base:base,api_key:key,remote_model:model,system_prompt:sysPrompt,settings:{temperature:parseFloat(temp)||0.7,max_tokens:parseInt(maxTok)||4096},rag_enabled:ragEnabled,rag_source:pRagSource,rag_top_k:3})});const d=await r.json();if(!d.ok)alert('Failed: '+(d.detail||d.error));else{document.getElementById('pAlias').value='';document.getElementById('pKey').value='';document.getElementById('pModel').value='';document.getElementById('pSysPrompt').value=''}}catch(e){alert('Failed: '+e)}setTimeout(refresh,500)}
+
+let ragLibData=[];
+async function loadRagLibrary(){
+  try{
+    const r=await(await fetch(API+'/api/rag/library')).json();
+    ragLibData=r.rags||[];
+    renderRagList();
+    document.querySelectorAll('select[id^="s_rag_"]').forEach(sel=>refreshRagSelect(sel));
+  }catch(e){}
+}
+function refreshRagSelect(sel){
+  const cur=sel.value;
+  Array.from(sel.options).forEach(o=>{if(o.value!=='conversation'&&o.value!=='none')o.remove();});
+  ragLibData.forEach(r=>{
+    const o=document.createElement('option');
+    o.value=r.name;o.textContent='Dataset: '+r.name+' ('+r.chunks+' chunks)';
+    sel.appendChild(o);
+  });
+  if(cur)sel.value=cur;
+}
+function renderRagList(){
+  const el=document.getElementById('rl_list');if(!el)return;
+  if(!ragLibData.length){el.innerHTML='<div class="empty">No RAGs built yet.</div>';return;}
+  el.innerHTML=ragLibData.map(r=>{
+    const del='<button class="btn btn-danger" style="flex:none;width:auto;padding:6px 14px" onclick="deleteRag('+JSON.stringify(r.name)+')">' + 'Delete</button>';
+    return '<div class="card" style="margin-bottom:10px">'
+      +'<div class="hdr"><div>'
+      +'<div class="name" style="color:var(--teal)">'+r.name+'</div>'
+      +'<div class="fname">'+r.source+' — '+r.chunks+' chunks — '+r.built_at+'</div>'
+      +'</div>'+del+'</div></div>';
+  }).join('');
+}
+async function buildRag(){
+  const name=document.getElementById('rl_name').value.trim();
+  const dataset=document.getElementById('rl_dataset').value;
+  const fi=document.getElementById('rl_file');
+  const file=fi&&fi.files.length?fi.files[0]:null;
+  if(!name){alert('Give the RAG a name first');return;}
+  if(!dataset&&!file){alert('Pick a dataset or upload a file');return;}
+  const btn=document.getElementById('rl_buildBtn'),st=document.getElementById('rl_status');
+  btn.disabled=true;btn.textContent='Building...';
+  st.textContent='Embedding chunks... this may take a minute.';st.style.color='var(--yellow)';
+  try{
+    let res;
+    if(file){
+      const fd=new FormData();fd.append('name',name);fd.append('file',file);
+      res=await(await fetch(API+'/api/rag/library/upload',{method:'POST',body:fd})).json();
+    }else{
+      res=await(await fetch(API+'/api/rag/library/build',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:name,filepath:dataset})})).json();
+    }
+    if(res.ok){
+      st.textContent=res.message;st.style.color='var(--green)';
+      document.getElementById('rl_name').value='';if(fi)fi.value='';
+      loadRagLibrary();
+    }else{
+      st.textContent='Error: '+(res.error||res.message);st.style.color='var(--red)';
+    }
+  }catch(e){st.textContent='Error: '+e;st.style.color='var(--red)';}
+  btn.disabled=false;btn.textContent='Build RAG';
+}
+async function deleteRag(name){
+  if(!confirm('Delete RAG '+name+'?'))return;
+  try{
+    await fetch(API+'/api/rag/library/delete',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})});
+    loadRagLibrary();
+  }catch(e){alert('Delete failed: '+e);}
+}
 refresh();setInterval(refresh,3000);
+loadRagLibrary();
 </script></body></html>
 """,
 
@@ -289,7 +375,9 @@ PUBLIC_DIR = "/opt/llama.cpp/examples/server/public"
 CONFIG_FILE = "/data/router_config.json"
 PROVIDERS_FILE = "/data/providers.json"
 RAG_DIR = "/data/rag"
+DATASET_RAG_DIR = "/data/rag_datasets"
 os.makedirs(RAG_DIR, exist_ok=True)
+os.makedirs(DATASET_RAG_DIR, exist_ok=True)
 
 _slots = {}
 _slots_lock = threading.Lock()
@@ -546,8 +634,134 @@ def rag_status(index_id):
         return {"chunks": idx.ntotal}
     except: return {"chunks": 0}
 
+
+# ── Dataset RAG Library ──────────────────────────────────────
+def _ds_rag_paths(name):
+    safe = re.sub(r'[^a-zA-Z0-9_-]', '', name)
+    return (os.path.join(DATASET_RAG_DIR, safe + ".db"),
+            os.path.join(DATASET_RAG_DIR, safe + ".faiss"),
+            os.path.join(DATASET_RAG_DIR, safe + ".meta.json"))
+
+def list_dataset_rags():
+    rags = []
+    for f in os.listdir(DATASET_RAG_DIR):
+        if f.endswith(".meta.json"):
+            try:
+                with open(os.path.join(DATASET_RAG_DIR, f)) as fh:
+                    rags.append(json.load(fh))
+            except: pass
+    return sorted(rags, key=lambda x: x.get("name", ""))
+
+def delete_dataset_rag(name):
+    db_path, idx_path, meta_path = _ds_rag_paths(name)
+    for p in [db_path, idx_path, meta_path]:
+        if os.path.isfile(p): os.remove(p)
+
+def _chunk_text(text, chunk_size=200, overlap=50):
+    toks = _enc.encode(text)
+    chunks = []
+    start = 0
+    while start < len(toks):
+        end = min(start + chunk_size, len(toks))
+        chunks.append(_enc.decode(toks[start:end]))
+        start += chunk_size - overlap
+    return chunks
+
+def _parse_file_to_texts(filepath):
+    ext = filepath.rsplit(".", 1)[-1].lower()
+    texts = []
+    if ext == "txt":
+        with open(filepath, encoding="utf-8", errors="ignore") as f:
+            texts = [f.read()]
+    elif ext == "jsonl":
+        with open(filepath, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                try:
+                    obj = json.loads(line)
+                    for key in ["text", "content", "instruction", "output", "input", "prompt", "response"]:
+                        if key in obj and obj[key]:
+                            texts.append(str(obj[key]))
+                except: texts.append(line)
+    elif ext == "csv":
+        import csv
+        with open(filepath, encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                parts = []
+                for key in ["text", "content", "instruction", "output", "input", "prompt", "response"]:
+                    if key in row and row[key]: parts.append(str(row[key]))
+                if not parts: parts = [" ".join(str(v) for v in row.values() if v)]
+                if parts: texts.append(" ".join(parts))
+    return texts
+
+def build_dataset_rag(name, filepath):
+    db_path, idx_path, meta_path = _ds_rag_paths(name)
+    try:
+        texts = _parse_file_to_texts(filepath)
+        if not texts:
+            return False, "No text content found in file", 0
+        all_chunks = []
+        for text in texts:
+            all_chunks.extend(_chunk_text(text))
+        if not all_chunks:
+            return False, "No chunks generated", 0
+        db = sqlite3.connect(db_path)
+        db.execute("CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, text TEXT)")
+        db.execute("DELETE FROM chunks")
+        db.commit()
+        index = faiss.IndexIDMap(faiss.IndexFlatIP(EMBED_DIM))
+        embedded = 0
+        for chunk in all_chunks:
+            vec = get_embedding(chunk)
+            if vec is None: continue
+            vec_np = np.array([vec], dtype=np.float32)
+            faiss.normalize_L2(vec_np)
+            db.execute("INSERT INTO chunks (text) VALUES (?)", (chunk,))
+            sqlite_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+            index.add_with_ids(vec_np, np.array([sqlite_id], dtype=np.int64))
+            embedded += 1
+        db.commit()
+        db.close()
+        tmp = idx_path + ".tmp"
+        faiss.write_index(index, tmp)
+        os.replace(tmp, idx_path)
+        meta = {"name": name, "source": os.path.basename(filepath),
+                "chunks": embedded, "built_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+        with open(meta_path, "w") as f: json.dump(meta, f)
+        print(f"[RAG] Built dataset RAG '{name}': {embedded} chunks", flush=True)
+        return True, f"Built '{name}' with {embedded} chunks", embedded
+    except Exception as e:
+        print(f"[RAG] Build failed: {e}", flush=True)
+        return False, str(e), 0
+
+def search_dataset_rag(name, query, top_k=3):
+    db_path, idx_path, _ = _ds_rag_paths(name)
+    if not os.path.isfile(idx_path): return []
+    vec = get_embedding(query)
+    if vec is None: return []
+    try:
+        index = faiss.read_index(idx_path)
+        if index.ntotal == 0: return []
+        vec_np = np.array([vec], dtype=np.float32)
+        faiss.normalize_L2(vec_np)
+        k = min(top_k, index.ntotal)
+        scores, ids = index.search(vec_np, k)
+        db = sqlite3.connect(db_path)
+        results = []
+        for i, sid in enumerate(ids[0]):
+            if sid < 0: continue
+            row = db.execute("SELECT text FROM chunks WHERE id = ?", (int(sid),)).fetchone()
+            if row: results.append({"text": row[0], "score": float(scores[0][i])})
+        db.close()
+        return results
+    except Exception as e:
+        print(f"[RAG] Dataset search failed: {e}", flush=True)
+        return []
+
 # ── Slot Management ──────────────────────────────────────────
-def load_model(model_file, alias=None, settings=None, system_prompt="", rag_enabled=True, rag_top_k=3):
+def load_model(model_file, alias=None, settings=None, system_prompt="", rag_enabled=True, rag_top_k=3, rag_source="conversation"):
     if not os.path.isfile(os.path.join(MODEL_DIR, model_file)):
         return False, None, f"Model not found: {model_file}"
     if alias is None: alias = _auto_name(model_file)
@@ -570,6 +784,7 @@ def load_model(model_file, alias=None, settings=None, system_prompt="", rag_enab
         "process": None, "status": "loading", "detail": f"Loading {model_file}...",
         "vram_est_mb": int(file_size / 1024 / 1024 * 1.2),
         "system_prompt": system_prompt, "rag_enabled": rag_enabled, "rag_top_k": rag_top_k,
+        "rag_source": rag_source,
         "settings": settings, "loaded_at": None,
     }
     with _slots_lock: _slots[alias] = slot
@@ -611,7 +826,7 @@ def load_model(model_file, alias=None, settings=None, system_prompt="", rag_enab
     return True, alias, f"Loading {model_file} as '{alias}'"
 
 def add_remote_provider(alias, provider_type, api_base, api_key, remote_model,
-                         system_prompt="", settings=None, rag_enabled=False, rag_top_k=3):
+                         system_prompt="", settings=None, rag_enabled=False, rag_top_k=3, rag_source="none"):
     if not alias or not provider_type or not api_base or not remote_model:
         return False, "Missing required fields"
     with _slots_lock:
@@ -620,6 +835,7 @@ def add_remote_provider(alias, provider_type, api_base, api_key, remote_model,
         "type": provider_type, "alias": alias, "api_base": api_base.rstrip("/"),
         "api_key": api_key, "remote_model": remote_model,
         "system_prompt": system_prompt, "rag_enabled": rag_enabled, "rag_top_k": rag_top_k,
+        "rag_source": rag_source,
         "settings": settings or {}, "status": "ready", "loaded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     with _slots_lock: _slots[alias] = slot
@@ -679,21 +895,21 @@ def _apply_agent_pipeline(slot, messages, request_settings=None):
     elif incoming_sys:
         messages.insert(0, incoming_sys)
 
-    # 2. Context trimming + auto-archive
+    # 2. Context trimming + auto-archive (conversation RAG only)
     trimmed = []
     ctx_size = int(slot.get("settings", {}).get("ctx_size", 4096))
     messages, trimmed, _, _ = trim_messages(messages, ctx_size)
-    if trimmed and slot.get("rag_enabled", False):
+    rag_source = slot.get("rag_source", "conversation" if slot.get("rag_enabled", False) else "none")
+    if trimmed and rag_source == "conversation":
         index_id = slot.get("alias", "default")
         try:
             rag_archive(index_id, trimmed)
         except Exception as e:
             print(f"[RAG] Auto-archive error: {e}", flush=True)
 
-    # 3. RAG: search for relevant context and inject
+    # 3. RAG: search and inject based on rag_source
     rag_results = []
-    if slot.get("rag_enabled", False):
-        index_id = slot.get("alias", "default")
+    if rag_source and rag_source != "none":
         user_msg = ""
         for m in reversed(messages):
             if m.get("role") == "user":
@@ -702,18 +918,23 @@ def _apply_agent_pipeline(slot, messages, request_settings=None):
         if user_msg:
             try:
                 top_k = slot.get("rag_top_k", 3)
-                rag_results = rag_search(index_id, user_msg, top_k=top_k)
+                if rag_source == "conversation":
+                    index_id = slot.get("alias", "default")
+                    rag_results = rag_search(index_id, user_msg, top_k=top_k)
+                else:
+                    rag_results = search_dataset_rag(rag_source, user_msg, top_k=top_k)
             except Exception as e:
                 print(f"[RAG] Search error: {e}", flush=True)
         if rag_results:
+            label = "[Earlier context:]" if rag_source == "conversation" else f"[Knowledge base: {rag_source}]"
             rag_text = "\n---\n".join([r["text"] for r in rag_results])
-            rag_note = {"role": "system", "content": "[Earlier context:]\n" + rag_text}
+            rag_note = {"role": "system", "content": label + "\n" + rag_text}
             if messages and messages[0].get("role") == "system":
                 messages.insert(1, rag_note)
             else:
                 messages.insert(0, rag_note)
 
-    # 3. Merge settings: request overrides slot defaults
+    # 4. Merge settings: request overrides slot defaults
     merged = dict(slot.get("settings", {}))
     if request_settings:
         for k, v in request_settings.items():
@@ -822,6 +1043,7 @@ def _save_config():
                      "system_prompt": s.get("system_prompt", ""),
                      "rag_enabled": s.get("rag_enabled", False),
                      "rag_top_k": s.get("rag_top_k", 3),
+                     "rag_source": s.get("rag_source", "conversation"),
                      "settings": s.get("settings", {})}
             if s.get("type") == "local":
                 entry["model_file"] = s.get("model_file", "")
@@ -892,6 +1114,7 @@ class Handler(BaseHTTPRequestHandler):
                         "system_prompt": s.get("system_prompt", "")[:100],
                         "rag_enabled": s.get("rag_enabled", False),
                         "rag_top_k": s.get("rag_top_k", 3),
+                        "rag_source": s.get("rag_source", "conversation"),
                         "loaded_at": s.get("loaded_at")}
                 if s.get("type") == "local":
                     info.update({"model_file": s.get("model_file", ""), "port": s.get("port"),
@@ -919,6 +1142,9 @@ class Handler(BaseHTTPRequestHandler):
 
         elif self.path == '/api/vram':
             self._json(200, get_vram_info())
+
+        elif self.path == '/api/rag/library':
+            self._json(200, {"rags": list_dataset_rags()})
 
         elif self.path == '/api/settings-schema':
             self._json(200, SETTINGS_SCHEMA)
@@ -1027,12 +1253,58 @@ class Handler(BaseHTTPRequestHandler):
                     self._json(404, {"error": f"Agent '{alias}' not found"})
                     return
                 slot = _slots[alias]
-                for key in ['system_prompt', 'rag_enabled', 'rag_top_k']:
+                for key in ['system_prompt', 'rag_enabled', 'rag_top_k', 'rag_source']:
                     if key in d: slot[key] = d[key]
                 if 'settings' in d:
                     for k, v in d['settings'].items():
                         slot['settings'][k] = v
                 _save_config()
+                self._json(200, {"ok": True})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+
+        elif self.path == '/api/rag/library/build':
+            try:
+                d = json.loads(body)
+                name = d.get('name', '').strip()
+                filepath = d.get('filepath', '').strip()
+                if not name or not filepath:
+                    self._json(400, {"error": "name and filepath required"}); return
+                if not os.path.isfile(filepath):
+                    self._json(400, {"error": f"File not found: {filepath}"}); return
+                ok, msg, count = build_dataset_rag(name, filepath)
+                self._json(200 if ok else 500, {"ok": ok, "message": msg, "chunks": count})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+
+        elif self.path == '/api/rag/library/upload':
+            try:
+                import cgi
+                ct = self.headers.get('Content-Type', '')
+                fs = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
+                    environ={'REQUEST_METHOD': 'POST', 'CONTENT_TYPE': ct,
+                             'CONTENT_LENGTH': self.headers.get('Content-Length', 0)})
+                name = fs.getvalue('name', '').strip()
+                fileitem = fs['file'] if 'file' in fs else None
+                if not name or not fileitem:
+                    self._json(400, {"error": "name and file required"}); return
+                upload_dir = '/data/uploads'
+                os.makedirs(upload_dir, exist_ok=True)
+                safe_fname = re.sub(r'[^a-zA-Z0-9._-]', '_', fileitem.filename or 'upload.txt')
+                filepath = os.path.join(upload_dir, safe_fname)
+                with open(filepath, 'wb') as f: f.write(fileitem.file.read())
+                ok, msg, count = build_dataset_rag(name, filepath)
+                self._json(200 if ok else 500, {"ok": ok, "message": msg, "chunks": count})
+            except Exception as e:
+                self._json(500, {"error": str(e)})
+
+        elif self.path == '/api/rag/library/delete':
+            try:
+                d = json.loads(body)
+                name = d.get('name', '').strip()
+                if not name:
+                    self._json(400, {"error": "name required"}); return
+                delete_dataset_rag(name)
                 self._json(200, {"ok": True})
             except Exception as e:
                 self._json(500, {"error": str(e)})
@@ -1173,7 +1445,7 @@ def main():
                     if mf and os.path.isfile(os.path.join(MODEL_DIR, mf)):
                         load_model(mf, entry.get("alias"), entry.get("settings"),
                                    entry.get("system_prompt", ""), entry.get("rag_enabled", True),
-                                   entry.get("rag_top_k", 3))
+                                   entry.get("rag_top_k", 3), entry.get("rag_source", "conversation"))
                         time.sleep(2)
                 else:
                     alias = entry.get("alias", "")
@@ -1183,7 +1455,7 @@ def main():
                                         entry.get("remote_model", ""),
                                         entry.get("system_prompt", ""),
                                         entry.get("settings"), entry.get("rag_enabled", False),
-                                        entry.get("rag_top_k", 3))
+                                        entry.get("rag_top_k", 3), entry.get("rag_source", "none"))
         else:
             models = list_models()
             if models:

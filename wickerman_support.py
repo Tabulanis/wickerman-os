@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.2.0 — Embedded file contents.
+Wickerman OS v5.3.0 — Embedded file contents.
 Imported by wickermaninstall.py. Place this file next to the installer.
 """
 
@@ -45,7 +45,7 @@ CRT_CSS = """
 MANUAL = """
 # WICKERMAN CODEX
 
-Welcome to Wickerman OS v5.2.0 — your local AI command center. Everything runs on your machine, no cloud required.
+Welcome to Wickerman OS v5.3.0 — your local AI command center. Everything runs on your machine, no cloud required.
 
 ## Getting Started
 
@@ -1114,7 +1114,7 @@ def index():
         if any(_inst_state.get(c,{}).get("state") in ("running","error") for c in changed): rebuild()
     ui.timer(1.0, watch)
 
-ui.run(host="0.0.0.0", port=8000, title="Wickerman OS", dark=True, show=False, storage_secret="wm-secret")
+ui.run(host="0.0.0.0", port=8000, title="Wickerman OS", dark=True, show=False, storage_secret="wm-secret", reload=False)
 '''
 
 # ══════════════════════════════════════════════════════════════════════════════

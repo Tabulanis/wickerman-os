@@ -2,7 +2,7 @@
 
 **Self-hosted AI operating system.** Run local language models, chain them into pipelines, and manage everything from a single dashboard. No cloud required.
 
-![Version](https://img.shields.io/badge/version-5.2.0-blue)
+![Version](https://img.shields.io/badge/version-5.3.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-orange)
 
@@ -134,3 +134,16 @@ MIT License. See [LICENSE](LICENSE) for details.
 Built by Tabulanis.
 
 Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp), [NiceGUI](https://nicegui.io/), [Flowise](https://flowiseai.com/), [Unsloth](https://github.com/unslothai/unsloth), [FAISS](https://github.com/facebookresearch/faiss).
+
+## Changelog
+
+### v5.3.0
+- **RAG Library** — Build named RAG indexes from datasets (TXT, JSONL, CSV). Agents can now use a dataset RAG instead of (or instead of) conversation memory. Create domain experts by pointing an agent at a knowledge base.
+- **Fixed** — Dashboard no longer resets/blinks during plugin installs or Docker operations (`reload=False`).
+
+### v5.2.0
+- Model Router with full agent orchestration (local + remote APIs)
+- Multi-conversation Chat UI with server-side history
+- Flow Editor, Model Trainer, Code Forge plugins
+- Dual-repo Git architecture with auto-commits
+
