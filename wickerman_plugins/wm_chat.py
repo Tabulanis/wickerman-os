@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.2.0 - Chat plugin manifest.
+Wickerman OS v5.4.0 - Chat plugin manifest.
 Thin conversation UI. Agents (prompts, RAG, settings) managed by the Model Router.
 """
 

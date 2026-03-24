@@ -2,7 +2,7 @@
 """
 ╔══════════════════════════════════════════════╗
 ║   WICKERMAN OS — OMNISCIENT EDITION         ║
-║   Single-file installer v5.3.0              ║
+║   Single-file installer v5.4.0              ║
 ╚══════════════════════════════════════════════╝
 
 Run:  python3 wickermaninstall.py
@@ -33,7 +33,7 @@ except ImportError:
     print("[WARN] wickerman_plugins package not found. No bundled plugins will be installed.")
     ALL_PLUGINS, PLUGIN_HOSTS = {}, []
 
-VERSION = "5.3.0"
+VERSION = "5.4.0"
 
 _SUDO_USER = os.environ.get("SUDO_USER")
 if _SUDO_USER:

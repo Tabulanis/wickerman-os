@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.1.0 — Flow Editor plugin manifest.
+Wickerman OS v5.4.0 — Flow Editor plugin manifest.
 """
 
 WM_FLOW = {

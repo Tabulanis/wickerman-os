@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.3.0 — Embedded file contents.
+Wickerman OS v5.4.0 — Embedded file contents.
 Imported by wickermaninstall.py. Place this file next to the installer.
 """
 
@@ -45,7 +45,7 @@ CRT_CSS = """
 MANUAL = """
 # WICKERMAN CODEX
 
-Welcome to Wickerman OS v5.3.0 — your local AI command center. Everything runs on your machine, no cloud required.
+Welcome to Wickerman OS v5.4.0 — your local AI command center. Everything runs on your machine, no cloud required.
 
 ## Getting Started
 
@@ -1102,9 +1102,16 @@ def index():
     ui.add_head_html(f"<style>{CRT_CSS}</style>"); apply_css(get_theme()); rebuild()
     ui.timer(2.0, update_hud); ui.timer(0.5, pump_logs)
     def pump_all():
+        dead = []
         for cn,lw in list(_active_card_logs.items()):
-            try: pump_card_log(cn,lw)
-            except Exception: pass
+            try:
+                pump_card_log(cn,lw)
+            except RuntimeError:
+                dead.append(cn)
+            except Exception:
+                pass
+        for cn in dead:
+            _active_card_logs.pop(cn, None)
     ui.timer(0.5, pump_all)
     _prev = {}
     def watch():

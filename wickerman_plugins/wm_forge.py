@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.1.0 — Code Forge plugin manifest.
+Wickerman OS v5.4.0 — Code Forge plugin manifest.
 """
 
 WM_FORGE = {

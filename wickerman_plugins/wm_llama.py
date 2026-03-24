@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.2.0 — Model Router plugin manifest.
+Wickerman OS v5.4.0 — Model Router plugin manifest.
 """
 
 WM_LLAMA = {
