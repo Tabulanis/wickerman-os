@@ -1,27 +1,46 @@
 """
-Wickerman OS v5.4.0 — Plugin package.
-Each plugin lives in its own file for isolated editing.
-Imported by wickermaninstall.py.
+Wickerman OS v5.6.0 — Plugin package.
+Auto-discovers all wm_*.py plugin files in this directory.
+Drop a new wm_yourplugin.py in here and it will be picked up
+automatically on the next install — no manual registration needed.
 """
+import os
+import importlib
 
-from wickerman_plugins.wm_llama import WM_LLAMA, PLUGIN_HOST as LLAMA_HOST
-from wickerman_plugins.wm_chat import WM_CHAT, PLUGIN_HOST as CHAT_HOST
-from wickerman_plugins.wm_flow import WM_FLOW, PLUGIN_HOST as FLOW_HOST
-from wickerman_plugins.wm_trainer import WM_TRAINER, PLUGIN_HOST as TRAINER_HOST
-from wickerman_plugins.wm_forge import WM_FORGE, PLUGIN_HOST as FORGE_HOST
+ALL_PLUGINS = {}
+PLUGIN_HOSTS = []
 
-ALL_PLUGINS = {
-    "wm-llama.json": WM_LLAMA,
-    "wm-chat.json": WM_CHAT,
-    "wm-flow.json": WM_FLOW,
-    "wm-trainer.json": WM_TRAINER,
-    "wm-forge.json": WM_FORGE,
-}
+_here = os.path.dirname(os.path.abspath(__file__))
 
-PLUGIN_HOSTS = [
-    LLAMA_HOST,
-    CHAT_HOST,
-    FLOW_HOST,
-    TRAINER_HOST,
-    FORGE_HOST,
-]
+for _fname in sorted(os.listdir(_here)):
+    if not (_fname.startswith("wm_") and _fname.endswith(".py")):
+        continue
+
+    _module_name = _fname[:-3]  # strip .py
+    _plugin_key = _module_name.replace("_", "-") + ".json"  # wm_probe -> wm-probe.json
+
+    try:
+        _mod = importlib.import_module(f"wickerman_plugins.{_module_name}")
+
+        # Find the manifest dict — convention: WM_PLUGINNAME in uppercase
+        _manifest_var = _module_name.upper()  # wm_probe -> WM_PROBE
+        if not hasattr(_mod, _manifest_var):
+            # Try scanning for any dict with container_name key
+            for _attr in dir(_mod):
+                _val = getattr(_mod, _attr)
+                if isinstance(_val, dict) and "container_name" in _val:
+                    _manifest_var = _attr
+                    break
+
+        _manifest = getattr(_mod, _manifest_var, None)
+        if _manifest and isinstance(_manifest, dict) and "container_name" in _manifest:
+            ALL_PLUGINS[_plugin_key] = _manifest
+
+        # Find PLUGIN_HOST — convention: PLUGIN_HOST in the module
+        _host = getattr(_mod, "PLUGIN_HOST", None)
+        if _host:
+            PLUGIN_HOSTS.append(_host)
+
+    except Exception as _e:
+        print(f"[plugins] Warning: could not load {_fname}: {_e}")
+

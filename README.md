@@ -2,20 +2,21 @@
 
 **Self-hosted AI operating system.** Run local language models, chain them into pipelines, and manage everything from a single dashboard. No cloud required.
 
-![Version](https://img.shields.io/badge/version-5.4.0-blue)
+![Version](https://img.shields.io/badge/version-5.6.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Linux-orange)
 
 ## What Is This?
 
-Wickerman OS is a Docker-based platform that turns your machine into a local AI command center. It bundles model inference, chat, visual pipelines, model training, and code generation behind a single installer and web dashboard.
+Wickerman OS is a Docker-based platform that turns your machine into a local AI command center. It bundles model inference, chat, visual pipelines, model training, code generation, and model evaluation behind a single installer and web dashboard.
 
 **Key features:**
 - **Model Router** — Load multiple local models simultaneously, configure them as agents with system prompts, RAG memory, and custom settings. Also supports remote APIs (OpenAI, Anthropic, Google Gemini) behind the same unified endpoint.
 - **Chat** — Multi-conversation UI with per-chat agent selection. Conversations persist server-side.
 - **Flow Editor** — Visual drag-and-drop pipeline builder (Flowise). Chain agents together.
-- **Model Trainer** — Fine-tune models with LoRA using Unsloth.
-- **Code Forge** — AI-assisted coding sandbox.
+- **Model Trainer** — Fine-tune models with LoRA using Unsloth. Full pipeline: download, train, export to GGUF.
+- **Code Forge** — Real local IDE with Monaco editor (VS Code engine), integrated terminal, per-project isolation, AI assist, and human-in-loop agent mode.
+- **Model Probe** — Systematic model evaluation. Run probe banks against any agent, score responses across six categories, drill into failures, and export correction datasets directly to the Trainer.
 - **RAG Memory** — Each agent has its own FAISS-powered vector memory. Old conversation context is automatically archived and retrieved when relevant.
 
 ## Requirements
@@ -59,12 +60,13 @@ Open `http://wickerman.local` in your browser.
   wickermaninstall.py              # Single-file installer
   wickerman_support.py             # Dashboard + nginx generator
   wickerman_plugins/               # Plugin source code
-    __init__.py                    # Assembles all plugins
+    __init__.py                    # Auto-discovers all wm_*.py plugins
     wm_llama.py                   # Model Router (agents, RAG, providers)
     wm_chat.py                    # Chat UI
     wm_flow.py                    # Flow Editor (Flowise)
     wm_trainer.py                 # Model Trainer (Unsloth)
-    wm_forge.py                   # Code Forge
+    wm_forge.py                   # Code Forge (Monaco IDE)
+    wm_probe.py                   # Model Probe (evaluation engine)
   models/                         # Local GGUF models (copied on install)
   stop.sh                         # Stop all containers
 
@@ -73,7 +75,9 @@ Open `http://wickerman.local` in your browser.
   models/                         # Your GGUF model files
   plugins/                        # Plugin manifests and data
   datasets/                       # Training datasets
+    probes/                       # Probe banks (.jsonl files)
   loras/                          # Fine-tuned adapters
+  workspace/                      # Code Forge projects
 ```
 
 ## Architecture
@@ -83,11 +87,17 @@ All inference flows through the Model Router's unified `/v1/chat/completions` en
 - **Model Router** manages agents (local llama.cpp + remote APIs), RAG memory, system prompts, and settings
 - **Chat** is a thin conversation UI that picks an agent and manages history
 - **Flow Editor** chains agents into visual pipelines
+- **Code Forge** is a full local IDE — Monaco editor, terminal, per-project venv isolation, AI assist
+- **Model Probe** evaluates any agent against structured probe banks and feeds failures back to the Trainer
 - All plugins talk to the Router — they never know where inference happens
 
 ## Agents
 
 An agent is a fully configured AI endpoint: a model (local or remote) with a system prompt, RAG memory, and sampling settings baked in. Create them in the Model Router dashboard.
+
+## Adding Plugins
+
+Drop any `wm_*.py` file into `~/aidojo/wickerman_plugins/` and it will be auto-discovered on the next install. No manual registration required.
 
 ## API
 
@@ -137,8 +147,19 @@ Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp), [NiceGUI](https:
 
 ## Changelog
 
+### v5.6.0
+- **Model Probe** — Systematic model evaluation engine. Run structured probe banks against any loaded agent across six categories: factual accuracy, empirical clarity, reasoning, uncertainty handling, consistency, and custom domain. Scores responses using auto-scoring and LLM-as-judge. Drill into failures, approve correction pairs, and export directly to the Trainer. Ships with 115 built-in empirical probes including 40 adversarial baited questions.
+- **Code Forge** — Full local IDE with Monaco editor (VS Code engine), integrated terminal (xterm.js + PTY), file tree, multi-file projects, per-project venv and node_modules isolation, AI assist (generate/explain/fix/refactor), and human-in-loop agent mode (plan → approve → code → approve → apply).
+- **Auto-discovery** — `wickerman_plugins/__init__.py` now auto-discovers all `wm_*.py` files. Drop a new plugin in the directory and it registers automatically on the next install.
+- **Fixed** — Plugin data directories now get correct permissions on install so container users can write to volumes.
+- **Fixed** — Dashboard timer crashes (RuntimeError on deleted NiceGUI elements) fully resolved across all four timers.
+
+### v5.4.0
+- **Model Customization Studio** — Complete training pipeline: HuggingFace model download, SFT fine-tuning with presets, and GGUF export via Unsloth native conversion. No external build tools required.
+- **Fixed** — NiceGUI timer crash on long plugin builds.
+
 ### v5.3.0
-- **RAG Library** — Build named RAG indexes from datasets (TXT, JSONL, CSV). Agents can now use a dataset RAG instead of (or instead of) conversation memory. Create domain experts by pointing an agent at a knowledge base.
+- **RAG Library** — Build named RAG indexes from datasets (TXT, JSONL, CSV). Agents can now use a dataset RAG instead of conversation memory. Create domain experts by pointing an agent at a knowledge base.
 - **Fixed** — Dashboard no longer resets/blinks during plugin installs or Docker operations (`reload=False`).
 
 ### v5.2.0
@@ -146,4 +167,3 @@ Powered by [llama.cpp](https://github.com/ggerganov/llama.cpp), [NiceGUI](https:
 - Multi-conversation Chat UI with server-side history
 - Flow Editor, Model Trainer, Code Forge plugins
 - Dual-repo Git architecture with auto-commits
-

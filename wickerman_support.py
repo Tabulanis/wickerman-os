@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.4.0 — Embedded file contents.
+Wickerman OS v5.6.0 — Embedded file contents.
 Imported by wickermaninstall.py. Place this file next to the installer.
 """
 
@@ -45,7 +45,7 @@ CRT_CSS = """
 MANUAL = """
 # WICKERMAN CODEX
 
-Welcome to Wickerman OS v5.4.0 — your local AI command center. Everything runs on your machine, no cloud required.
+Welcome to Wickerman OS v5.6.0 — your local AI command center. Everything runs on your machine, no cloud required.
 
 ## Getting Started
 
@@ -706,9 +706,15 @@ def index():
             if "files" in manifest:
                 data_dir = f"/support/plugins/{pid}"
                 os.makedirs(data_dir, exist_ok=True)
+                # Ensure container users (uid 1001) can write to plugin dirs
+                try: os.chmod(data_dir, 0o777)
+                except: pass
                 for fn, fc in manifest["files"].items():
                     fp = os.path.join(data_dir, fn)
-                    os.makedirs(os.path.dirname(fp), exist_ok=True)
+                    subdir = os.path.dirname(fp)
+                    os.makedirs(subdir, exist_ok=True)
+                    try: os.chmod(subdir, 0o777)
+                    except: pass
                     with open(fp, "w") as f: f.write(fc)
                 clog(f"Extracted {len(manifest['files'])} file(s) to {data_dir}")
 
@@ -1102,16 +1108,9 @@ def index():
     ui.add_head_html(f"<style>{CRT_CSS}</style>"); apply_css(get_theme()); rebuild()
     ui.timer(2.0, update_hud); ui.timer(0.5, pump_logs)
     def pump_all():
-        dead = []
         for cn,lw in list(_active_card_logs.items()):
-            try:
-                pump_card_log(cn,lw)
-            except RuntimeError:
-                dead.append(cn)
-            except Exception:
-                pass
-        for cn in dead:
-            _active_card_logs.pop(cn, None)
+            try: pump_card_log(cn,lw)
+            except Exception: pass
     ui.timer(0.5, pump_all)
     _prev = {}
     def watch():
@@ -1121,7 +1120,7 @@ def index():
         if any(_inst_state.get(c,{}).get("state") in ("running","error") for c in changed): rebuild()
     ui.timer(1.0, watch)
 
-ui.run(host="0.0.0.0", port=8000, title="Wickerman OS", dark=True, show=False, storage_secret="wm-secret", reload=False)
+ui.run(host="0.0.0.0", port=8000, title="Wickerman OS", dark=True, show=False, storage_secret="wm-secret")
 '''
 
 # ══════════════════════════════════════════════════════════════════════════════
