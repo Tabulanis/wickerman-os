@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.6.0 - Code Forge plugin manifest.
+Wickerman OS v5.7.0 - Code Forge plugin manifest.
 
 Stage 1: Monaco editor, file tree, terminal, per-project isolation,
          AI assist, human-in-loop agent mode, web/PWA export.

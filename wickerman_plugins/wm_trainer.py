@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.6.0 — Model Customization Studio plugin manifest.
+Wickerman OS v5.7.0 — Model Customization Studio plugin manifest.
 
 Stage 1: HuggingFace download -> SFT training -> Merge -> GGUF -> Quantize -> Model Router
 Stage 2 (planned): DPO training, AI-assisted pair generation, correction/shape/focus modes

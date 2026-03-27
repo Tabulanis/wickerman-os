@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.6.0 - Model Probe plugin manifest.
+Wickerman OS v5.7.0 - Model Probe plugin manifest.
 Find your model's weaknesses. Fix them.
 """
 
@@ -73,14 +73,37 @@ PROBES_DIR  = os.environ.get("PROBES_DIR",   "/probes")
 DATA_DIR    = os.environ.get("DATA_DIR",     "/data")
 DATASETS_DIR = os.environ.get("DATASETS_DIR", "/datasets")
 
-os.makedirs(PROBES_DIR,  exist_ok=True)
-os.makedirs(DATA_DIR,    exist_ok=True)
-os.makedirs(DATASETS_DIR, exist_ok=True)
+def _safe_makedirs(path):
+    try:
+        os.makedirs(path, exist_ok=True)
+        os.chmod(path, 0o777)
+    except PermissionError:
+        pass  # Volume permissions handled by host
+    except Exception:
+        pass
+
+_safe_makedirs(PROBES_DIR)
+_safe_makedirs(DATA_DIR)
+_safe_makedirs(DATASETS_DIR)
 
 RUNS_DIR    = os.path.join(DATA_DIR, "runs")
 CUSTOM_DIR  = os.path.join(PROBES_DIR, "custom")
-os.makedirs(RUNS_DIR,   exist_ok=True)
-os.makedirs(CUSTOM_DIR, exist_ok=True)
+_safe_makedirs(RUNS_DIR)
+_safe_makedirs(CUSTOM_DIR)
+
+# Verify we can actually write — fall back to /tmp if not
+def _check_writable(path, fallback):
+    try:
+        test = os.path.join(path, ".write_test")
+        with open(test, "w") as f: f.write("ok")
+        os.remove(test)
+        return path
+    except:
+        os.makedirs(fallback, exist_ok=True)
+        return fallback
+
+RUNS_DIR   = _check_writable(RUNS_DIR,   "/tmp/wm_probe_runs")
+CUSTOM_DIR = _check_writable(CUSTOM_DIR, "/tmp/wm_probe_custom")
 
 # ── Probe loading ──────────────────────────────────────────
 def load_probe_banks():

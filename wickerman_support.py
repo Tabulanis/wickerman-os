@@ -1,5 +1,5 @@
 """
-Wickerman OS v5.6.0 — Embedded file contents.
+Wickerman OS v5.7.0 — Embedded file contents.
 Imported by wickermaninstall.py. Place this file next to the installer.
 """
 
@@ -45,7 +45,7 @@ CRT_CSS = """
 MANUAL = """
 # WICKERMAN CODEX
 
-Welcome to Wickerman OS v5.6.0 — your local AI command center. Everything runs on your machine, no cloud required.
+Welcome to Wickerman OS v5.7.0 — your local AI command center. Everything runs on your machine, no cloud required.
 
 ## Getting Started
 
@@ -1106,21 +1106,43 @@ def index():
             cs["log_cursor"] = len(_log_buffer)
 
     ui.add_head_html(f"<style>{CRT_CSS}</style>"); apply_css(get_theme()); rebuild()
-    ui.timer(2.0, update_hud); ui.timer(0.5, pump_logs)
+    def _safe_update_hud():
+        try: update_hud()
+        except RuntimeError: pass
+        except Exception: pass
+    ui.timer(2.0, _safe_update_hud)
+
+    def _safe_pump_logs():
+        try: pump_logs()
+        except RuntimeError: pass
+        except Exception: pass
+    ui.timer(0.5, _safe_pump_logs)
+
     def pump_all():
-        for cn,lw in list(_active_card_logs.items()):
-            try: pump_card_log(cn,lw)
-            except Exception: pass
+        dead = []
+        for cn, lw in list(_active_card_logs.items()):
+            try:
+                pump_card_log(cn, lw)
+            except RuntimeError:
+                dead.append(cn)
+            except Exception:
+                pass
+        for cn in dead:
+            _active_card_logs.pop(cn, None)
     ui.timer(0.5, pump_all)
+
     _prev = {}
     def watch():
-        changed = {c for c,info in _inst_state.items() if _prev.get(c) != info.get("state")}
-        if not changed: return
-        _prev.update({c:_inst_state[c].get("state") for c in changed})
-        if any(_inst_state.get(c,{}).get("state") in ("running","error") for c in changed): rebuild()
+        try:
+            changed = {c for c,info in _inst_state.items() if _prev.get(c) != info.get("state")}
+            if not changed: return
+            _prev.update({c:_inst_state[c].get("state") for c in changed})
+            if any(_inst_state.get(c,{}).get("state") in ("running","error") for c in changed): rebuild()
+        except RuntimeError: pass
+        except Exception: pass
     ui.timer(1.0, watch)
 
-ui.run(host="0.0.0.0", port=8000, title="Wickerman OS", dark=True, show=False, storage_secret="wm-secret")
+ui.run(host="0.0.0.0", port=8000, title="Wickerman OS", dark=True, show=False, storage_secret="wm-secret", reload=False)
 '''
 
 # ══════════════════════════════════════════════════════════════════════════════

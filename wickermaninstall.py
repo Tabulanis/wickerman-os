@@ -2,7 +2,7 @@
 """
 ╔══════════════════════════════════════════════╗
 ║   WICKERMAN OS — OMNISCIENT EDITION         ║
-║   Single-file installer v5.6.0              ║
+║   Single-file installer v5.7.0              ║
 ╚══════════════════════════════════════════════╝
 
 Run:  python3 wickermaninstall.py
@@ -33,7 +33,7 @@ except ImportError:
     print("[WARN] wickerman_plugins package not found. No bundled plugins will be installed.")
     ALL_PLUGINS, PLUGIN_HOSTS = {}, []
 
-VERSION = "5.6.0"
+VERSION = "5.7.0"
 
 _SUDO_USER = os.environ.get("SUDO_USER")
 if _SUDO_USER:
@@ -196,13 +196,15 @@ def main():
 
     # ── Create WickermanSupport persistent directory ─────────────────────
     print(f"  Persistent storage: {SUPPORT_DIR}")
-    for d in ["models", "datasets", "loras", "cache", "plugins", "workspace", "hf_cache"]:
+    for d in ["models", "datasets", "loras", "cache", "plugins", "workspace", "hf_cache", "flows", "flows/subflows", "flows/runs"]:
         (SUPPORT_DIR / d).mkdir(parents=True, exist_ok=True)
     run(f"chown -R {_REAL_USER or '$USER'} {SUPPORT_DIR}", ignore=True)
     # Set dirs writable by container users (uid 1001 = forgeuser/probeuser)
     run(f"chmod -R 777 {SUPPORT_DIR}/workspace", ignore=True)
     run(f"chmod -R 777 {SUPPORT_DIR}/hf_cache", ignore=True)
     run(f"chmod -R 777 {SUPPORT_DIR}/datasets", ignore=True)
+    run(f"chmod -R 777 {SUPPORT_DIR}/plugins", ignore=True)
+    run(f"chmod -R 777 {SUPPORT_DIR}/flows", ignore=True)
 
     # ── Copy bundled models ──────────────────────────────────────────
     INSTALLER_DIR = Path(__file__).parent.resolve()
